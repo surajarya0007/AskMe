@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>askme</title>
+    <script>
+      // Intercept Google OAuth Callback redirections under Vite SPA routing
+      if (window.location.pathname === '/auth/google/callback' || window.location.pathname === '/auth/google/callback/') {
+        const hash = window.location.hash;
+        const params = new URLSearchParams(hash.substring(1));
+        const idToken = params.get('id_token');
+
+        if (idToken) {
+          try {
+            const base64Url = idToken.split('.')[1];
+            const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+            const jsonPayload = decodeURIComponent(
+              atob(base64)
+                .split('')
+                .map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+                .join('')
+            );
+            const user = JSON.parse(jsonPayload);
+
+            if (window.opener) {
+              window.opener.postMessage(
+                {
+                  type: 'GOOGLE_AUTH_SUCCESS',
+                  email: user.email,
+                  name: user.name,
+                  avatar: user.picture,
+                },
+                window.location.origin
+              );
+            }
+          } catch (err) {
+            console.error('Failed to parse Google ID Token:', err);
+          }
+        }
+        window.close();
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
