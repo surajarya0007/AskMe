@@ -1,16 +1,10 @@
-import React, { useRef, useState, useEffect } from 'react';
-import { useApp } from '../context/AppContext';
-import { AudioWaveform } from './AudioWaveform';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { 
-  Mic, MicOff, 
-  Bot, 
-  User, 
-  ArrowUp,
-  PhoneOff
-} from 'lucide-react';
-import './ChatWindow.css';
+import React, { useRef, useState, useEffect } from "react";
+import { useApp } from "../context/AppContext";
+import { AudioWaveform } from "./AudioWaveform";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { Mic, MicOff, Bot, User, ArrowUp, PhoneOff } from "lucide-react";
+import "./ChatWindow.css";
 
 interface ChatWindowProps {
   onStartCall: () => void;
@@ -18,45 +12,39 @@ interface ChatWindowProps {
   aiResponding: boolean;
   isMuted: boolean;
   onMuteToggle: () => void;
+  isCallActive: boolean;
   liveUserText: string;
   liveAiText: string;
   onOpenLogin: () => void;
 }
 
-export const ChatWindow: React.FC<ChatWindowProps> = ({ 
-  onStartCall, 
+export const ChatWindow: React.FC<ChatWindowProps> = ({
+  onStartCall,
   onEndCall,
-  aiResponding, 
-  isMuted, 
+  aiResponding,
+  isMuted,
   onMuteToggle,
+  isCallActive,
   liveUserText,
   liveAiText,
-  onOpenLogin
+  onOpenLogin,
 }) => {
-  const { 
-    messages, 
-    addMessage, 
-    loading, 
-    callState,
-    user
-  } = useApp();
+  const { messages, addMessage, loading, callState, user } = useApp();
 
-  const [inputText, setInputText] = useState('');
+  const [inputText, setInputText] = useState("");
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
-  const isCallActive = callState.isActive;
-
   // Auto-scroll when messages, live text, or loading changes
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, liveUserText, liveAiText, loading]);
 
   // Auto-resize input textarea
   useEffect(() => {
     const textarea = textareaRef.current;
     if (textarea) {
-      textarea.style.height = 'auto';
+      textarea.style.height = "auto";
       textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`;
     }
   }, [inputText]);
@@ -64,33 +52,51 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   if (!user) {
     return (
       <main className="chat-window-container">
-        <div className="greeting-dashboard animate-fade-in" style={{ padding: '0 24px' }}>
-          <div className="greeting-header-gemini" style={{ maxWidth: '480px', margin: '0 auto' }}>
-            <h1 style={{ marginBottom: '16px', fontSize: '2.2rem' }}>Sign in to AskMe</h1>
-            <p style={{ color: '#8e918f', fontSize: '0.95rem', lineHeight: '1.6', marginBottom: '28px' }}>
-              To start voice calls, save conversation history, and personalize your experience, please sign in.
+        <div
+          className="greeting-dashboard animate-fade-in"
+          style={{ padding: "0 24px" }}
+        >
+          <div
+            className="greeting-header-gemini"
+            style={{ maxWidth: "480px", margin: "0 auto" }}
+          >
+            <h1 style={{ marginBottom: "16px", fontSize: "2.2rem" }}>
+              Sign in to AskMe
+            </h1>
+            <p
+              style={{
+                color: "#8e918f",
+                fontSize: "0.95rem",
+                lineHeight: "1.6",
+                marginBottom: "28px",
+              }}
+            >
+              To start voice calls, save conversation history, and personalize
+              your experience, please sign in.
             </p>
             <button
               onClick={onOpenLogin}
               style={{
-                background: 'var(--accent-purple)',
-                color: 'white',
-                border: 'none',
-                padding: '12px 32px',
-                borderRadius: '24px',
+                background: "var(--accent-purple)",
+                color: "white",
+                border: "none",
+                padding: "12px 32px",
+                borderRadius: "24px",
                 fontWeight: 600,
-                fontSize: '0.95rem',
-                cursor: 'pointer',
-                boxShadow: '0 4px 14px rgba(139, 92, 246, 0.4)',
-                transition: 'all 0.2s'
+                fontSize: "0.95rem",
+                cursor: "pointer",
+                boxShadow: "0 4px 14px rgba(139, 92, 246, 0.4)",
+                transition: "all 0.2s",
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-1px)';
-                e.currentTarget.style.boxShadow = '0 6px 18px rgba(139, 92, 246, 0.5)';
+                e.currentTarget.style.transform = "translateY(-1px)";
+                e.currentTarget.style.boxShadow =
+                  "0 6px 18px rgba(139, 92, 246, 0.5)";
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'none';
-                e.currentTarget.style.boxShadow = '0 4px 14px rgba(139, 92, 246, 0.4)';
+                e.currentTarget.style.transform = "none";
+                e.currentTarget.style.boxShadow =
+                  "0 4px 14px rgba(139, 92, 246, 0.4)";
               }}
             >
               Log In
@@ -105,12 +111,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     e.preventDefault();
     if (!inputText.trim() || loading || aiResponding) return;
     const messageText = inputText.trim();
-    setInputText('');
-    await addMessage('user', messageText);
+    setInputText("");
+    await addMessage("user", messageText);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend(e);
     }
@@ -120,26 +126,33 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
   // Voice status hint text
   const getVoiceHint = () => {
-    if (isMuted) return 'Microphone muted';
+    if (isMuted) return "Microphone muted";
     switch (callState.status) {
-      case 'connecting': return 'Connecting...';
-      case 'speaking': return 'AskMe is responding...';
-      case 'listening': return 'Listening — speak now';
-      default: return 'Speak now';
+      case "connecting":
+        return "Connecting...";
+      case "speaking":
+        return "AskMe is responding...";
+      case "listening":
+        return "Listening — speak now";
+      default:
+        return "Speak now";
     }
   };
 
   // Render a single message bubble
   const renderBubble = (
     key: string | number,
-    sender: 'user' | 'assistant',
+    sender: "user" | "assistant",
     text: string,
     timestamp: string,
-    isLive = false
+    isLive = false,
   ) => {
-    const isUser = sender === 'user';
+    const isUser = sender === "user";
     return (
-      <div key={key} className={`message-bubble-wrapper ${isUser ? 'user' : 'assistant'} ${isLive ? 'live-bubble' : ''}`}>
+      <div
+        key={key}
+        className={`message-bubble-wrapper ${isUser ? "user" : "assistant"} ${isLive ? "live-bubble" : ""}`}
+      >
         {!isUser && (
           <div className="message-avatar bot glass-panel">
             <Bot size={16} />
@@ -151,7 +164,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               <p className="bubble-text">{text}</p>
             ) : (
               <div className="bubble-text bubble-markdown">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {text}
+                </ReactMarkdown>
               </div>
             )}
           </div>
@@ -162,7 +177,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 Live
               </span>
             ) : (
-              new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              new Date(timestamp).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              })
             )}
           </span>
         </div>
@@ -178,15 +196,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   // The voice bar — replaces the text input when call is active
   const renderVoiceBar = () => (
     <div className="voice-bar-wrapper">
-      {/* Live transcript caption above the bar */}
+      {/* Caption above the bar — show status hint only (live text appears in bubbles) */}
       <div className="voice-bar-caption">
-        {liveUserText || liveAiText ? (
-          <span className="voice-bar-caption-text">
-            {liveUserText || liveAiText}
-          </span>
-        ) : (
-          <span className="voice-bar-hint">{getVoiceHint()}</span>
-        )}
+        <span className="voice-bar-hint">{getVoiceHint()}</span>
       </div>
 
       {/* Main bar: waveform + controls */}
@@ -199,12 +211,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         {/* Controls on the right */}
         <div className="voice-bar-controls">
           <button
-            className={`voice-bar-btn ${isMuted ? 'muted' : ''}`}
+            className={`voice-bar-btn ${isMuted ? "muted" : ""}`}
             onClick={onMuteToggle}
-            title={isMuted ? 'Unmute' : 'Mute'}
+            title={isMuted ? "Unmute" : "Mute"}
           >
             {isMuted ? <MicOff size={18} /> : <Mic size={18} />}
-            <span>{isMuted ? 'Unmute' : 'Mute'}</span>
+            <span>{isMuted ? "Unmute" : "Mute"}</span>
           </button>
 
           <button
@@ -218,14 +230,19 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         </div>
       </div>
 
-      <p className="disclaimer-text-gemini">AskMe can make mistakes. Verify important info.</p>
+      <p className="disclaimer-text-gemini">
+        AskMe can make mistakes. Verify important info.
+      </p>
     </div>
   );
 
   // The normal text input form
   const renderInputForm = (isCentered: boolean) => (
-    <div className={`input-area-wrapper ${isCentered ? 'centered' : ''}`}>
-      <form onSubmit={handleSend} className="input-pill-container-gemini glass-panel">
+    <div className={`input-area-wrapper ${isCentered ? "centered" : ""}`}>
+      <form
+        onSubmit={handleSend}
+        className="input-pill-container-gemini glass-panel"
+      >
         <textarea
           ref={isCentered ? textareaRef : undefined}
           className="input-textarea-gemini"
@@ -258,7 +275,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           )}
         </div>
       </form>
-      <p className="disclaimer-text-gemini">AskMe can make mistakes. Verify important info.</p>
+      <p className="disclaimer-text-gemini">
+        AskMe can make mistakes. Verify important info.
+      </p>
     </div>
   );
 
@@ -268,11 +287,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         // Greeting empty board with centered input bar
         <div className="greeting-dashboard animate-fade-in">
           <div className="greeting-content">
-
             {/* Greeting heading */}
             <div className="greeting-header-gemini">
               <h1>
-                {user ? `Hi ${user.name.split(' ')[0]}, what's the move?` : "What's the move?"}
+                {user
+                  ? `Hi ${user.name.split(" ")[0]}, what's the move?`
+                  : "What's the move?"}
               </h1>
             </div>
 
@@ -289,18 +309,35 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             <div className="messages-stream">
               {/* Saved messages from DB */}
               {messages.map((msg, index) =>
-                renderBubble(msg.id || index, msg.sender, msg.text, msg.created_at)
+                renderBubble(
+                  msg.id || index,
+                  msg.sender,
+                  msg.text,
+                  msg.created_at,
+                ),
               )}
 
               {/* Live user speech bubble — appears while user is speaking */}
-              {isCallActive && liveUserText && (
-                renderBubble('live-user', 'user', liveUserText, new Date().toISOString(), true)
-              )}
+              {isCallActive &&
+                liveUserText &&
+                renderBubble(
+                  "live-user",
+                  "user",
+                  liveUserText,
+                  new Date().toISOString(),
+                  true,
+                )}
 
               {/* Live AI response bubble — appears while AI is responding */}
-              {isCallActive && liveAiText && (
-                renderBubble('live-ai', 'assistant', liveAiText, new Date().toISOString(), true)
-              )}
+              {isCallActive &&
+                liveAiText &&
+                renderBubble(
+                  "live-ai",
+                  "assistant",
+                  liveAiText,
+                  new Date().toISOString(),
+                  true,
+                )}
 
               {/* Text chat typing indicator (not shown during voice) */}
               {!isCallActive && (loading || aiResponding) && (

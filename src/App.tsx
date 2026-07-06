@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { ChatWindow } from './components/ChatWindow';
 import { LoginModal } from './components/LoginModal';
 import { useApp } from './context/AppContext';
 import { useGeminiLive } from './hooks/useGeminiLive';
+import { useInterimSpeechRecognition } from './hooks/useInterimSpeechRecognition';
 import { useGemini } from './hooks/useGemini';
 import { getMockReply } from './utils/mockData';
 import { AlertCircle } from 'lucide-react';
@@ -14,6 +15,7 @@ export const App: React.FC = () => {
     addMessage,
     addMessagesBulk,
     settings,
+    callState,
     setCallState,
     error,
     setError,
@@ -35,8 +37,16 @@ export const App: React.FC = () => {
   // Live voice transcript states — displayed in chat in real-time while call is active
   const [liveUserText, setLiveUserText] = useState('');
   const [liveAiText, setLiveAiText] = useState('');
+  const geminiUserTextRef = useRef('');
+  const interimUserTextRef = useRef('');
   
   const processingRef = useRef(false);
+
+  const updateLiveUserText = useCallback(() => {
+    setLiveUserText(geminiUserTextRef.current || interimUserTextRef.current);
+  }, []);
+
+  const resetInterimRef = useRef<(() => void)>(() => {});
 
   // Initialize Gemini Live WebSocket hook
   const {
@@ -58,37 +68,59 @@ export const App: React.FC = () => {
 
     onError: (msg) => setError(msg),
 
-    // Live: update user speech bubble as user speaks
+    // Gemini transcription (may lag until user stops speaking)
     onUserTranscript: (text) => {
-      setLiveUserText(text);
+      geminiUserTextRef.current = text;
+      updateLiveUserText();
     },
 
-    // Live: update AI speech bubble as AI responds
     onAiTranscript: (text) => {
       setLiveAiText(text);
     },
 
-    // On turn complete: save both messages to DB in guaranteed correct order
     onTurnComplete: async (userText, aiText) => {
-      setLiveUserText('');
-      setLiveAiText('');
+      const finalUserText = userText || interimUserTextRef.current;
       try {
         const msgsToSave = [];
-        if (userText) msgsToSave.push({ sender: 'user' as const, text: userText });
+        if (finalUserText) msgsToSave.push({ sender: 'user' as const, text: finalUserText });
         if (aiText) msgsToSave.push({ sender: 'assistant' as const, text: aiText });
         if (msgsToSave.length > 0) {
           await addMessagesBulk(msgsToSave);
         }
       } catch (e) {
         console.error('[App] Failed to save voice turn:', e);
+      } finally {
+        geminiUserTextRef.current = '';
+        interimUserTextRef.current = '';
+        resetInterimRef.current();
+        setLiveUserText('');
+        setLiveAiText('');
       }
     }
   });
+
+  // Browser interim captions — updates the live bubble while the user is still talking
+  const { resetInterim } = useInterimSpeechRecognition({
+    enabled: isLiveActive,
+    paused: isMuted || callState.status === 'speaking',
+    onInterimTranscript: (text) => {
+      interimUserTextRef.current = text;
+      if (!geminiUserTextRef.current) {
+        setLiveUserText(text);
+      }
+    },
+  });
+
+  useEffect(() => {
+    resetInterimRef.current = resetInterim;
+  }, [resetInterim]);
 
   // Sync Live session active state with callState
   useEffect(() => {
     setCallState(prev => ({ ...prev, isActive: isLiveActive }));
     if (!isLiveActive) {
+      geminiUserTextRef.current = '';
+      interimUserTextRef.current = '';
       setLiveUserText('');
       setLiveAiText('');
     }
@@ -160,6 +192,7 @@ export const App: React.FC = () => {
         aiResponding={aiResponding}
         isMuted={isMuted}
         onMuteToggle={() => setIsMuted(m => !m)}
+        isCallActive={isLiveActive}
         liveUserText={liveUserText}
         liveAiText={liveAiText}
         onOpenLogin={() => setIsLoginOpen(true)}

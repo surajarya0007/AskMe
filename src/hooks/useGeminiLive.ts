@@ -211,9 +211,10 @@ export const useGeminiLive = ({
           let rawData = event.data;
           if (event.data instanceof Blob) rawData = await event.data.text();
           const payload = JSON.parse(rawData);
+          const serverContent = payload.serverContent;
 
           // ── Interruption: user spoke while AI was talking ──
-          if (payload.serverContent?.interrupted) {
+          if (serverContent?.interrupted) {
             console.log('[useGeminiLive] Interrupted by user');
             stopAllPlayback();
 
@@ -230,19 +231,29 @@ export const useGeminiLive = ({
           }
 
           // ── User speech transcription (live, streaming) ──
-          const inputTranscription = payload.serverContent?.inputTranscription;
+          // API sends incremental fragments — accumulate into a running buffer.
+          // Also check snake_case keys returned by some API versions.
+          const inputTranscription =
+            serverContent?.inputTranscription ??
+            serverContent?.input_transcription ??
+            payload.inputTranscription ??
+            payload.input_transcription;
           if (inputTranscription?.text) {
-            accumulatedUserTextRef.current = inputTranscription.text.trim();
-            callbacksRef.current.onUserTranscript(accumulatedUserTextRef.current);
+            accumulatedUserTextRef.current += inputTranscription.text;
+            callbacksRef.current.onUserTranscript(accumulatedUserTextRef.current.trim());
           }
 
           // ── AI response transcription (live, streaming) ──
           let aiChunk = '';
-          const parts = payload.serverContent?.modelTurn?.parts;
+          const parts = serverContent?.modelTurn?.parts;
           if (parts) {
             for (const part of parts) { if (part.text) aiChunk += part.text; }
           }
-          const outputTranscription = payload.serverContent?.outputTranscription;
+          const outputTranscription =
+            serverContent?.outputTranscription ??
+            serverContent?.output_transcription ??
+            payload.outputTranscription ??
+            payload.output_transcription;
           if (outputTranscription?.text) aiChunk += outputTranscription.text;
 
           if (aiChunk) {
@@ -251,7 +262,7 @@ export const useGeminiLive = ({
           }
 
           // ── Turn complete: both user and AI text are finalized ──
-          if (payload.serverContent?.turnComplete) {
+          if (serverContent?.turnComplete ?? serverContent?.turn_complete) {
             const userText = accumulatedUserTextRef.current.trim();
             const aiText = accumulatedAiTextRef.current.trim();
             accumulatedUserTextRef.current = '';
