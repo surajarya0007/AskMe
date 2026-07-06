@@ -1,6 +1,8 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { AudioWaveform } from './AudioWaveform';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { 
   Mic, MicOff, 
   Bot, 
@@ -145,7 +147,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         )}
         <div className="message-bubble-content">
           <div className="bubble glass-panel">
-            <p className="bubble-text">{text}</p>
+            {isUser ? (
+              <p className="bubble-text">{text}</p>
+            ) : (
+              <div className="bubble-text bubble-markdown">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+              </div>
+            )}
           </div>
           <span className="bubble-time">
             {isLive ? (

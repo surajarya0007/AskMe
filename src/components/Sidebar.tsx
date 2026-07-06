@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { 
   Plus, 
@@ -42,6 +42,20 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen, onOpenLogin
   const [searchQuery, setSearchQuery] = useState('');
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
+
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close the popover when clicking outside the footer area
+  useEffect(() => {
+    if (!showUserMenu) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setShowUserMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showUserMenu]);
 
   const handleStartEdit = (id: string, currentTitle: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -239,7 +253,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen, onOpenLogin
         )}
 
         {/* Sidebar Footer - User Profile and Sign out menu */}
-        <div className="sidebar-footer-gemini">
+        <div className="sidebar-footer-gemini" ref={userMenuRef}>
           {/* User Popover Menu */}
           {showUserMenu && (
             <div className="user-popover-menu glass-panel animate-slide-up">

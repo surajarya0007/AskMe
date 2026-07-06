@@ -424,3 +424,13 @@ body {
   opacity: 1;
 }
 
+@media (max-width: 480px) {
+  .error-banner {
+    left: 16px;
+    right: 16px;
+    max-width: none;
+    bottom: 80px;
+  }
+}
+
+
