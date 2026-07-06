@@ -23,7 +23,9 @@
   flex-direction: column;
   overflow: hidden;
   padding: 24px;
-  border-color: rgba(255, 255, 255, 0.08);
+  background: #1e1f20; /* Solid dark background to fix transparency issue */
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
   animation: scaleIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
