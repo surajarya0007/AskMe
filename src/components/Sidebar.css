@@ -3,6 +3,7 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh;
   width: 280px;
   background: var(--sidebar-bg);
   border-right: 1px solid rgba(255, 255, 255, 0.03);
@@ -595,6 +596,7 @@
     top: 0;
     left: 0;
     height: 100vh;
+    height: 100dvh;
     width: 280px;
     transform: translateX(-280px);
     pointer-events: auto;
