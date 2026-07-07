@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { getSupabase } from '../utils/supabase';
 
 export interface ChatSession {
@@ -105,6 +105,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     return null;
   });
+  const skipNextLoadRef = useRef(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -248,6 +249,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Load messages whenever active session changes
   useEffect(() => {
+    if (skipNextLoadRef.current) {
+      skipNextLoadRef.current = false;
+      return;
+    }
+
     const loadMessages = async () => {
       if (!activeSessionId) {
         setMessages([]);
@@ -329,6 +335,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }));
         
         setSessions(formatted);
+        skipNextLoadRef.current = true;
         setActiveSessionId(title);
         return title;
       } else {
@@ -346,6 +353,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         setSessions(formatted);
         localStorage.setItem(`askme_msgs_${email}_${title}`, JSON.stringify([]));
+        skipNextLoadRef.current = true;
         setActiveSessionId(title);
         return title;
       }
@@ -497,46 +505,105 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Add message to active session
   const addMessage = async (sender: 'user' | 'assistant', text: string) => {
     let currentSessionId = activeSessionId;
-    
-    // Auto-create a session if none is active
+    let isNewSession = false;
+    const email = user ? user.email : 'guest_local';
+
     if (!currentSessionId) {
+      isNewSession = true;
       const summary = text.length > 25 ? text.substring(0, 25) + '...' : text;
-      currentSessionId = await createNewSession(summary);
+      currentSessionId = summary;
+
+      // 1. Set the ref to prevent loading messages for this session
+      skipNextLoadRef.current = true;
+
+      // 2. Optimistically update session ID & sessions list
+      setActiveSessionId(summary);
+      setSessions(prev => [
+        { id: summary, title: summary, created_at: new Date().toISOString() },
+        ...prev
+      ]);
+    }
+
+    const newMsgObj: ChatMessage = {
+      session_id: currentSessionId!,
+      sender,
+      text,
+      created_at: new Date().toISOString(),
+    };
+
+    if (isNewSession) {
+      // Optimistically set messages to contain this first message
+      setMessages([newMsgObj]);
+    } else {
+      // Optimistically append the message to current list
+      setMessages(prev => [...prev, newMsgObj]);
     }
 
     try {
-      const email = user ? user.email : 'guest_local';
-      const newMsgObj = {
-        sender,
-        text,
-        created_at: new Date().toISOString(),
-      };
+      if (isNewSession) {
+        if (supabase) {
+          // 1. Fetch current titles array
+          const { data } = await supabase
+            .from('sessions')
+            .select('titles')
+            .eq('user_email', email)
+            .maybeSingle();
+          
+          const currentTitles = data ? data.titles : [];
+          const updatedTitles = currentTitles.includes(currentSessionId) 
+            ? currentTitles 
+            : [currentSessionId, ...currentTitles];
 
-      if (supabase) {
-        // Fetch, append, and upsert messages list
-        const { data } = await supabase
-          .from('messages')
-          .select('messages')
-          .eq('user_email', email)
-          .eq('chat_title', currentSessionId)
-          .maybeSingle();
+          // 2. Upsert the updated titles array
+          const { error: dbErr1 } = await supabase
+            .from('sessions')
+            .upsert({ user_email: email, titles: updatedTitles });
 
-        const currentMsgs = data ? data.messages : [];
-        const updatedMsgs = [...currentMsgs, newMsgObj];
+          if (dbErr1) throw dbErr1;
 
-        const { error: dbErr } = await supabase
-          .from('messages')
-          .upsert({ user_email: email, chat_title: currentSessionId, messages: updatedMsgs });
+          // 3. Create the messages entry with our new message!
+          const { error: dbErr2 } = await supabase
+            .from('messages')
+            .insert({ user_email: email, chat_title: currentSessionId, messages: [newMsgObj] });
 
-        if (dbErr) throw dbErr;
-        setMessages(updatedMsgs);
+          if (dbErr2) throw dbErr2;
+        } else {
+          // LocalStorage fallback
+          const localSess = localStorage.getItem(`askme_sessions_${email}`);
+          const titles = localSess ? JSON.parse(localSess) : [];
+          const updatedTitles = titles.includes(currentSessionId) ? titles : [currentSessionId, ...titles];
+          localStorage.setItem(`askme_sessions_${email}`, JSON.stringify(updatedTitles));
+
+          localStorage.setItem(`askme_msgs_${email}_${currentSessionId}`, JSON.stringify([newMsgObj]));
+        }
       } else {
-        const localMsgs = localStorage.getItem(`askme_msgs_${email}_${currentSessionId}`) || '[]';
-        const parsed = JSON.parse(localMsgs);
-        const updated = [...parsed, newMsgObj];
-        
-        localStorage.setItem(`askme_msgs_${email}_${currentSessionId}`, JSON.stringify(updated));
-        setMessages(updated);
+        // Existing session
+        if (supabase) {
+          // Fetch, append, and upsert messages list
+          const { data } = await supabase
+            .from('messages')
+            .select('messages')
+            .eq('user_email', email)
+            .eq('chat_title', currentSessionId)
+            .maybeSingle();
+
+          const currentMsgs = data ? data.messages : [];
+          const updatedMsgs = [...currentMsgs, newMsgObj];
+
+          const { error: dbErr } = await supabase
+            .from('messages')
+            .upsert({ user_email: email, chat_title: currentSessionId, messages: updatedMsgs });
+
+          if (dbErr) throw dbErr;
+          setMessages(updatedMsgs);
+        } else {
+          const localMsgs = localStorage.getItem(`askme_msgs_${email}_${currentSessionId}`) || '[]';
+          const parsed = JSON.parse(localMsgs);
+          const updated = [...parsed, newMsgObj];
+          
+          localStorage.setItem(`askme_msgs_${email}_${currentSessionId}`, JSON.stringify(updated));
+          setMessages(updated);
+        }
       }
 
       // Automatically rename session from default title if this was the first message
@@ -556,50 +623,106 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (messagesToAdd.length === 0) return;
     
     let currentSessionId = activeSessionId;
+    let isNewSession = false;
+    const email = user ? user.email : 'guest_local';
     
-    // Auto-create a session if none is active using the first user message
     if (!currentSessionId) {
+      isNewSession = true;
       const firstUserMsg = messagesToAdd.find(m => m.sender === 'user') || messagesToAdd[0];
       const summary = firstUserMsg.text.length > 25 ? firstUserMsg.text.substring(0, 25) + '...' : firstUserMsg.text;
-      currentSessionId = await createNewSession(summary);
+      currentSessionId = summary;
+
+      // 1. Set the ref to prevent loading messages for this session
+      skipNextLoadRef.current = true;
+
+      // 2. Optimistically update session ID & sessions list
+      setActiveSessionId(summary);
+      setSessions(prev => [
+        { id: summary, title: summary, created_at: new Date().toISOString() },
+        ...prev
+      ]);
+    }
+
+    const newMsgObjects: ChatMessage[] = messagesToAdd.map(msg => ({
+      session_id: currentSessionId!,
+      sender: msg.sender,
+      text: msg.text,
+      created_at: new Date().toISOString(),
+    }));
+
+    if (isNewSession) {
+      // Optimistically set messages to contain these bulk messages
+      setMessages(newMsgObjects);
+    } else {
+      // Optimistically append the messages
+      setMessages(prev => [...prev, ...newMsgObjects]);
     }
 
     try {
-      const email = user ? user.email : 'guest_local';
-      
-      const newMsgObjects = messagesToAdd.map(msg => ({
-        sender: msg.sender,
-        text: msg.text,
-        created_at: new Date().toISOString(),
-      }));
+      if (isNewSession) {
+        if (supabase) {
+          // 1. Fetch current titles array
+          const { data } = await supabase
+            .from('sessions')
+            .select('titles')
+            .eq('user_email', email)
+            .maybeSingle();
+          
+          const currentTitles = data ? data.titles : [];
+          const updatedTitles = currentTitles.includes(currentSessionId) 
+            ? currentTitles 
+            : [currentSessionId, ...currentTitles];
 
-      let finalMsgs = [];
+          // 2. Upsert the updated titles array
+          const { error: dbErr1 } = await supabase
+            .from('sessions')
+            .upsert({ user_email: email, titles: updatedTitles });
 
-      if (supabase) {
-        // Fetch current messages list
-        const { data } = await supabase
-          .from('messages')
-          .select('messages')
-          .eq('user_email', email)
-          .eq('chat_title', currentSessionId)
-          .maybeSingle();
+          if (dbErr1) throw dbErr1;
 
-        const currentMsgs = data ? data.messages : [];
-        finalMsgs = [...currentMsgs, ...newMsgObjects];
+          // 3. Create the messages entry with our new messages!
+          const { error: dbErr2 } = await supabase
+            .from('messages')
+            .insert({ user_email: email, chat_title: currentSessionId, messages: newMsgObjects });
 
-        const { error: dbErr } = await supabase
-          .from('messages')
-          .upsert({ user_email: email, chat_title: currentSessionId, messages: finalMsgs });
+          if (dbErr2) throw dbErr2;
+        } else {
+          // LocalStorage fallback
+          const localSess = localStorage.getItem(`askme_sessions_${email}`);
+          const titles = localSess ? JSON.parse(localSess) : [];
+          const updatedTitles = titles.includes(currentSessionId) ? titles : [currentSessionId, ...titles];
+          localStorage.setItem(`askme_sessions_${email}`, JSON.stringify(updatedTitles));
 
-        if (dbErr) throw dbErr;
-        setMessages(finalMsgs);
+          localStorage.setItem(`askme_msgs_${email}_${currentSessionId}`, JSON.stringify(newMsgObjects));
+        }
       } else {
-        const localMsgs = localStorage.getItem(`askme_msgs_${email}_${currentSessionId}`) || '[]';
-        const parsed = JSON.parse(localMsgs);
-        finalMsgs = [...parsed, ...newMsgObjects];
-        
-        localStorage.setItem(`askme_msgs_${email}_${currentSessionId}`, JSON.stringify(finalMsgs));
-        setMessages(finalMsgs);
+        // Existing session
+        if (supabase) {
+          // Fetch, append, and upsert messages list
+          const { data } = await supabase
+            .from('messages')
+            .select('messages')
+            .eq('user_email', email)
+            .eq('chat_title', currentSessionId)
+            .maybeSingle();
+
+          const currentMsgs = data ? data.messages : [];
+          const finalMsgs = [...currentMsgs, ...newMsgObjects];
+
+          const { error: dbErr } = await supabase
+            .from('messages')
+            .upsert({ user_email: email, chat_title: currentSessionId, messages: finalMsgs });
+
+          if (dbErr) throw dbErr;
+          setMessages(finalMsgs);
+        } else {
+          const localMsgs = localStorage.getItem(`askme_msgs_${email}_${currentSessionId}`) || '[]';
+          const parsed = JSON.parse(localMsgs);
+          const finalMsgs = [...parsed, ...newMsgObjects];
+          
+          localStorage.setItem(`askme_msgs_${email}_${currentSessionId}`, JSON.stringify(finalMsgs));
+          setMessages(finalMsgs);
+        }
       }
 
       // Automatically rename session from default title if this was a new session

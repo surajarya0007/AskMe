@@ -14,6 +14,8 @@ export const App: React.FC = () => {
     messages,
     addMessage,
     addMessagesBulk,
+    createNewSession,
+    activeSessionId,
     settings,
     callState,
     setCallState,
@@ -125,6 +127,26 @@ export const App: React.FC = () => {
       setLiveAiText('');
     }
   }, [isLiveActive, setCallState]);
+
+  const isInitializingSessionRef = useRef(false);
+
+  // Lazily create session during voice call as soon as user starts speaking
+  useEffect(() => {
+    if (isLiveActive && !activeSessionId && liveUserText.trim() && !isInitializingSessionRef.current) {
+      isInitializingSessionRef.current = true;
+      createNewSession("New Conversation")
+        .catch(err => console.error("Failed to lazily create voice session:", err))
+        .finally(() => {
+          isInitializingSessionRef.current = false;
+        });
+    }
+  }, [isLiveActive, activeSessionId, liveUserText, createNewSession]);
+
+  useEffect(() => {
+    if (!isLiveActive) {
+      isInitializingSessionRef.current = false;
+    }
+  }, [isLiveActive]);
 
   const handleStartCall = () => {
     setIsMuted(false);
