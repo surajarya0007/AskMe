@@ -11,7 +11,7 @@ export interface UseGeminiLiveProps {
   /** Called continuously with the live running transcript as the AI speaks */
   onAiTranscript: (text: string) => void;
   /** Called once per turn when the AI finishes responding — both texts are finalized and in correct order */
-  onTurnComplete: (userText: string, aiText: string) => void;
+  onTurnComplete: (userText: string, aiText: string, isSessionSwitch?: boolean) => void;
   /** Pass the current conversation's messages so the model inherits previous context on reconnect */
   previousMessages?: { sender: 'user' | 'assistant'; text: string }[];
 }
@@ -300,7 +300,7 @@ export const useGeminiLive = ({
     }
   };
 
-  const stopLiveSession = () => {
+  const stopLiveSession = (isSessionSwitch = false) => {
     if (stoppedRef.current) return;
     stoppedRef.current = true;
 
@@ -314,7 +314,7 @@ export const useGeminiLive = ({
     accumulatedUserTextRef.current = '';
     accumulatedAiTextRef.current = '';
     if (userText || aiText) {
-      callbacksRef.current.onTurnComplete(userText, aiText);
+      callbacksRef.current.onTurnComplete(userText, aiText, isSessionSwitch);
     }
 
     if (socketRef.current) {

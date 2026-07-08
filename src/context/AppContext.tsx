@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { getSupabase } from '../utils/supabase';
 
 export interface ChatSession {
@@ -50,12 +50,17 @@ interface AppContextType {
   deleteSession: (id: string) => Promise<void>;
   renameSession: (id: string, newTitle: string) => Promise<void>;
   addMessage: (sender: 'user' | 'assistant', text: string) => Promise<void>;
-  addMessagesBulk: (messagesToAdd: { sender: 'user' | 'assistant', text: string }[]) => Promise<void>;
+  addMessagesBulk: (
+    messagesToAdd: { sender: 'user' | 'assistant', text: string }[],
+    overrideSessionId?: string | null,
+    skipSelect?: boolean
+  ) => Promise<void>;
   setCallState: React.Dispatch<React.SetStateAction<CallState>>;
   setError: (err: string | null) => void;
   clearHistory: () => Promise<void>;
   login: () => void;
   logout: () => void;
+  registerSessionSwitchHandler: (cb: () => void) => () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -119,6 +124,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     status: 'disconnected',
     liveTranscript: '',
   });
+
+  const sessionSwitchCallbacks = useRef<(() => void)[]>([]);
+
+  const registerSessionSwitchHandler = useCallback((cb: () => void) => {
+    sessionSwitchCallbacks.current.push(cb);
+    return () => {
+      sessionSwitchCallbacks.current = sessionSwitchCallbacks.current.filter(c => c !== cb);
+    };
+  }, []);
+
+  const notifySessionSwitch = useCallback(() => {
+    sessionSwitchCallbacks.current.forEach(cb => {
+      try {
+        cb();
+      } catch (err) {
+        console.error("Error in session switch callback:", err);
+      }
+    });
+  }, []);
 
   // Fetch Supabase client dynamically based on settings
   const supabase = getSupabase(settings.supabaseUrl, settings.supabaseKey);
@@ -335,6 +359,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Reset the view to a blank new chat WITHOUT persisting anything to DB.
   // A real session is created lazily on the first addMessage() call.
   const resetToNewChat = () => {
+    notifySessionSwitch();
     setActiveSessionId(null);
     setMessages([]);
     setError(null);
@@ -406,6 +431,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Select a session
   const selectSession = (id: string) => {
+    notifySessionSwitch();
     setActiveSessionId(id);
   };
 
@@ -459,6 +485,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       if (activeSessionId === id) {
+        notifySessionSwitch();
         const remaining = sessions.filter((s) => s.id !== id);
         setActiveSessionId(remaining.length > 0 ? remaining[0].id : null);
       }
@@ -659,10 +686,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Bulk save voice chat messages
-  const addMessagesBulk = async (messagesToAdd: { sender: 'user' | 'assistant', text: string }[]) => {
+  const addMessagesBulk = async (
+    messagesToAdd: { sender: 'user' | 'assistant', text: string }[],
+    overrideSessionId?: string | null,
+    skipSelect?: boolean
+  ) => {
     if (messagesToAdd.length === 0) return;
     
-    let currentSessionId = activeSessionId;
+    let currentSessionId = overrideSessionId !== undefined ? overrideSessionId : activeSessionId;
     let isNewSession = false;
     const email = user ? user.email : 'guest_local';
     
@@ -676,7 +707,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       skipNextLoadRef.current = true;
 
       // 2. Optimistically update session ID & sessions list
-      setActiveSessionId(summary);
+      if (!skipSelect) {
+        setActiveSessionId(summary);
+      }
       setSessions(prev => [
         { id: summary, title: summary, created_at: new Date().toISOString() },
         ...prev
@@ -692,10 +725,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     if (isNewSession) {
       // Optimistically set messages to contain these bulk messages
-      setMessages(newMsgObjects);
+      if (!skipSelect) {
+        setMessages(newMsgObjects);
+      }
     } else {
       // Optimistically append the messages
-      setMessages(prev => [...prev, ...newMsgObjects]);
+      if (!skipSelect) {
+        setMessages(prev => [...prev, ...newMsgObjects]);
+      }
     }
 
     try {
@@ -754,14 +791,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             .upsert({ user_email: email, chat_title: currentSessionId, messages: finalMsgs });
 
           if (dbErr) throw dbErr;
-          setMessages(finalMsgs);
+          if (!skipSelect) {
+            setMessages(finalMsgs);
+          }
         } else {
           const localMsgs = localStorage.getItem(`askme_msgs_${email}_${currentSessionId}`) || '[]';
           const parsed = JSON.parse(localMsgs);
           const finalMsgs = [...parsed, ...newMsgObjects];
           
           localStorage.setItem(`askme_msgs_${email}_${currentSessionId}`, JSON.stringify(finalMsgs));
-          setMessages(finalMsgs);
+          if (!skipSelect) {
+            setMessages(finalMsgs);
+          }
         }
       }
 
@@ -806,6 +847,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
         }
       }
+      notifySessionSwitch();
       setSessions([]);
       setMessages([]);
       setActiveSessionId(null);
@@ -841,6 +883,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         user,
         login,
         logout,
+        registerSessionSwitchHandler,
       }}
     >
       {children}

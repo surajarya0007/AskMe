@@ -21,7 +21,8 @@ export const App: React.FC = () => {
     setCallState,
     error,
     setError,
-    user
+    user,
+    registerSessionSwitchHandler
   } = useApp();
 
   const { generateResponse } = useGemini();
@@ -80,14 +81,14 @@ export const App: React.FC = () => {
       setLiveAiText(text);
     },
 
-    onTurnComplete: async (userText, aiText) => {
+    onTurnComplete: async (userText, aiText, isSessionSwitch) => {
       const finalUserText = userText || interimUserTextRef.current;
       try {
         const msgsToSave = [];
         if (finalUserText) msgsToSave.push({ sender: 'user' as const, text: finalUserText });
         if (aiText) msgsToSave.push({ sender: 'assistant' as const, text: aiText });
         if (msgsToSave.length > 0) {
-          await addMessagesBulk(msgsToSave);
+          await addMessagesBulk(msgsToSave, activeSessionId, isSessionSwitch);
         }
       } catch (e) {
         console.error('[App] Failed to save voice turn:', e);
@@ -147,6 +148,14 @@ export const App: React.FC = () => {
       isInitializingSessionRef.current = false;
     }
   }, [isLiveActive]);
+
+  // Disconnect active live session on switching session / starting new chat
+  useEffect(() => {
+    const unsubscribe = registerSessionSwitchHandler(() => {
+      stopLiveSession(true);
+    });
+    return unsubscribe;
+  }, [registerSessionSwitchHandler, stopLiveSession]);
 
   const handleStartCall = () => {
     setIsMuted(false);
