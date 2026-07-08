@@ -55,7 +55,9 @@ export const App: React.FC = () => {
   const {
     isActive: isLiveActive,
     startLiveSession,
-    stopLiveSession
+    stopLiveSession,
+    userAnalyser,
+    aiAnalyser
   } = useGeminiLive({
     apiKey: settings.apiKey || import.meta.env.VITE_GEMINI_API_KEY || '',
     voiceName: settings.voiceName || 'Puck',
@@ -227,6 +229,8 @@ export const App: React.FC = () => {
         liveUserText={liveUserText}
         liveAiText={liveAiText}
         onOpenLogin={() => setIsLoginOpen(true)}
+        userAnalyser={userAnalyser}
+        aiAnalyser={aiAnalyser}
       />
 
       {/* Global Error Banner */}

@@ -4,12 +4,22 @@ interface AudioWaveformProps {
   status: 'disconnected' | 'connecting' | 'connected' | 'listening' | 'speaking';
   isActive: boolean;
   isMuted?: boolean;
+  userAnalyser?: AnalyserNode | null;
+  aiAnalyser?: AnalyserNode | null;
 }
 
-export const AudioWaveform: React.FC<AudioWaveformProps> = ({ status, isActive, isMuted = false }) => {
+export const AudioWaveform: React.FC<AudioWaveformProps> = ({
+  status,
+  isActive,
+  isMuted = false,
+  userAnalyser,
+  aiAnalyser,
+}) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animationRef = useRef<number | null>(null);
   const phaseRef = useRef<number>(0);
+  const smoothedValuesRef = useRef<number[]>([]);
+  const smoothedRmsRef = useRef<number>(0);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -72,14 +82,67 @@ export const AudioWaveform: React.FC<AudioWaveformProps> = ({ status, isActive, 
         ctx.stroke();
       } else {
         // Connected / Listening / Speaking state -> render complex sine waves
+        const analyser = status === 'speaking' ? aiAnalyser : userAnalyser;
+        let rms = 0;
+
+        if (analyser && !(status === 'listening' && isMuted)) {
+          const bufferLength = analyser.frequencyBinCount;
+          const audioData = new Uint8Array(bufferLength);
+          analyser.getByteTimeDomainData(audioData as any);
+
+          // Initialize or resize the smoothed values array if needed
+          if (smoothedValuesRef.current.length !== bufferLength) {
+            smoothedValuesRef.current = new Array(bufferLength).fill(0);
+          }
+
+          // Calculate Root Mean Square (RMS) for amplitude scaling
+          let sum = 0;
+          for (let i = 0; i < bufferLength; i++) {
+            const v = (audioData[i] - 128) / 128;
+            sum += v * v;
+          }
+          rms = Math.sqrt(sum / bufferLength);
+
+          // Low-pass filter for time-domain waveform to filter out high-frequency speed
+          const smoothingFactor = 0.12;
+          for (let i = 0; i < bufferLength; i++) {
+            const rawValue = (audioData[i] - 128) / 128;
+            smoothedValuesRef.current[i] =
+              smoothedValuesRef.current[i] * (1 - smoothingFactor) +
+              rawValue * smoothingFactor;
+          }
+
+          // Smooth the volume (RMS) scaling changes to avoid sudden height jumps
+          const rmsSmoothingFactor = 0.12;
+          smoothedRmsRef.current =
+            smoothedRmsRef.current * (1 - rmsSmoothingFactor) +
+            rms * rmsSmoothingFactor;
+        } else {
+          // Decay smoothed values when silent/no analyser
+          smoothedRmsRef.current *= 0.85;
+          if (smoothedValuesRef.current.length > 0) {
+            for (let i = 0; i < smoothedValuesRef.current.length; i++) {
+              smoothedValuesRef.current[i] *= 0.85;
+            }
+          }
+        }
+
         // Adjust settings based on state
-        let numWaves = 4;
-        let baseAmplitude = status === 'speaking' ? 30 : 12; // taller waves when speaking
-        let frequencyScale = status === 'speaking' ? 0.025 : 0.015;
-        let speed = status === 'speaking' ? 0.08 : 0.04;
+        const numWaves = 4;
+        // Taller base amplitude when either the AI or User is speaking
+        let baseAmplitude = status === 'speaking' ? 55 : (status === 'listening' ? 45 : 15);
+        const frequencyScale = status === 'speaking' ? 0.025 : 0.015;
+        // Slower horizontal speeds so the waves are clearly visible and move slowly
+        const speed = status === 'speaking' ? 0.025 : (status === 'listening' ? 0.02 : 0.015);
 
         // Add a breathing effect to base amplitude
-        baseAmplitude += Math.sin(phaseRef.current * 0.8) * (status === 'speaking' ? 8 : 3);
+        baseAmplitude += Math.sin(phaseRef.current * 0.8) * (status === 'speaking' ? 12 : (status === 'listening' ? 8 : 3));
+
+        // A baseline minimum amplitude scale so the waves still breathe gently when quiet
+        const minScale = 0.15;
+        const currentRms = analyser ? smoothedRmsRef.current : 0;
+        // Scale up volume response (up to 1.25x) so it reacts more strongly to voice amplitude
+        const amplitudeMultiplier = analyser ? (minScale + (1 - minScale) * Math.min(currentRms * 9, 1.25)) : 1.0;
 
         const colors = [
           'rgba(139, 92, 246, 0.65)', // Violet
@@ -101,11 +164,24 @@ export const AudioWaveform: React.FC<AudioWaveformProps> = ({ status, isActive, 
           for (let x = 0; x < width; x++) {
             // Apply a nice bell curve window so the wave tapers off at the left and right edges
             const windowPercent = Math.sin((x / width) * Math.PI);
+            
+            let audioValue = 0;
+            if (analyser && smoothedValuesRef.current.length > 0) {
+              const dataIndex = Math.floor((x / width) * smoothedValuesRef.current.length);
+              audioValue = smoothedValuesRef.current[dataIndex];
+            }
+
+            const baseSine = Math.sin(x * frequencyScale * (1 + i * 0.15) + wavePhase);
+            // Blend base sine wave with physical voice waveform details (making vertical reactions more pronounced)
+            const blendRatio = 0.2 + i * 0.05;
+            const reactiveValue = baseSine * blendRatio + audioValue * (2.2 - i * 0.3);
+
             const y =
               height / 2 +
-              Math.sin(x * frequencyScale * (1 + i * 0.15) + wavePhase) *
+              reactiveValue *
                 waveAmplitude *
-                windowPercent;
+                windowPercent *
+                amplitudeMultiplier;
             
             ctx.lineTo(x, y);
           }
@@ -131,7 +207,7 @@ export const AudioWaveform: React.FC<AudioWaveformProps> = ({ status, isActive, 
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [status, isActive]);
+  }, [status, isActive, userAnalyser, aiAnalyser, isMuted]);
 
   return (
     <canvas 

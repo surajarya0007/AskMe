@@ -16,6 +16,8 @@ interface ChatWindowProps {
   liveUserText: string;
   liveAiText: string;
   onOpenLogin: () => void;
+  userAnalyser?: AnalyserNode | null;
+  aiAnalyser?: AnalyserNode | null;
 }
 
 export const ChatWindow: React.FC<ChatWindowProps> = ({
@@ -28,6 +30,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   liveUserText,
   liveAiText,
   onOpenLogin,
+  userAnalyser,
+  aiAnalyser,
 }) => {
   const { messages, addMessage, loading, callState, user } = useApp();
 
@@ -205,7 +209,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       <div className="voice-bar-panel glass-panel">
         {/* Waveform fills the left side */}
         <div className="voice-bar-wave">
-          <AudioWaveform status={callState.status} isActive={isCallActive} />
+          <AudioWaveform 
+            status={callState.status} 
+            isActive={isCallActive} 
+            userAnalyser={userAnalyser}
+            aiAnalyser={aiAnalyser}
+            isMuted={isMuted}
+          />
         </div>
 
         {/* Controls on the right */}

@@ -28,11 +28,16 @@ export const useGeminiLive = ({
   previousMessages = []
 }: UseGeminiLiveProps) => {
   const [isActive, setIsActive] = useState(false);
+  const [userAnalyser, setUserAnalyser] = useState<AnalyserNode | null>(null);
+  const [aiAnalyser, setAiAnalyser] = useState<AnalyserNode | null>(null);
+
   const socketRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const micNodeRef = useRef<ScriptProcessorNode | null>(null);
   const micSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
+  const userAnalyserRef = useRef<AnalyserNode | null>(null);
+  const aiAnalyserRef = useRef<AnalyserNode | null>(null);
 
   // Audio playback scheduling
   const nextPlayTimeRef = useRef<number>(0);
@@ -100,7 +105,11 @@ export const useGeminiLive = ({
 
       const source = ctx.createBufferSource();
       source.buffer = audioBuffer;
-      source.connect(ctx.destination);
+      if (aiAnalyserRef.current) {
+        source.connect(aiAnalyserRef.current);
+      } else {
+        source.connect(ctx.destination);
+      }
 
       activeSourcesRef.current.add(source);
       source.onended = () => {
@@ -163,6 +172,12 @@ export const useGeminiLive = ({
       audioContextRef.current = audioCtx;
       nextPlayTimeRef.current = 0;
 
+      const aiAnalyserNode = audioCtx.createAnalyser();
+      aiAnalyserNode.fftSize = 256;
+      aiAnalyserNode.connect(audioCtx.destination);
+      aiAnalyserRef.current = aiAnalyserNode;
+      setAiAnalyser(aiAnalyserNode);
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       micStreamRef.current = stream;
 
@@ -203,6 +218,13 @@ export const useGeminiLive = ({
 
         const source = audioCtx.createMediaStreamSource(stream);
         micSourceRef.current = source;
+
+        const userAnalyserNode = audioCtx.createAnalyser();
+        userAnalyserNode.fftSize = 256;
+        userAnalyserRef.current = userAnalyserNode;
+        setUserAnalyser(userAnalyserNode);
+        source.connect(userAnalyserNode);
+
         const processor = audioCtx.createScriptProcessor(4096, 1, 1);
         micNodeRef.current = processor;
         processor.onaudioprocess = (e) => processAndSendMicAudio(e.inputBuffer.getChannelData(0), audioCtx.sampleRate);
@@ -327,6 +349,11 @@ export const useGeminiLive = ({
       try { socketRef.current.onclose = null; socketRef.current.onerror = null; socketRef.current.close(); } catch (e) {}
       socketRef.current = null;
     }
+    if (userAnalyserRef.current) { try { userAnalyserRef.current.disconnect(); } catch (e) {} userAnalyserRef.current = null; }
+    if (aiAnalyserRef.current) { try { aiAnalyserRef.current.disconnect(); } catch (e) {} aiAnalyserRef.current = null; }
+    setUserAnalyser(null);
+    setAiAnalyser(null);
+
     if (micNodeRef.current) { try { micNodeRef.current.disconnect(); } catch (e) {} micNodeRef.current = null; }
     if (micSourceRef.current) { try { micSourceRef.current.disconnect(); } catch (e) {} micSourceRef.current = null; }
     if (micStreamRef.current) { micStreamRef.current.getTracks().forEach(t => t.stop()); micStreamRef.current = null; }
@@ -335,5 +362,5 @@ export const useGeminiLive = ({
 
   useEffect(() => () => { stopLiveSession(); }, []);
 
-  return { isActive, startLiveSession, stopLiveSession };
+  return { isActive, startLiveSession, stopLiveSession, userAnalyser, aiAnalyser };
 };
