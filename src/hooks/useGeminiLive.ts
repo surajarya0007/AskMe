@@ -45,6 +45,12 @@ export const useGeminiLive = ({
   // Guard: prevents double-fire on stopLiveSession being called twice
   const stoppedRef = useRef<boolean>(false);
 
+  // Keep track of the latest mute state in a ref to avoid stale closures in audio event handlers
+  const isMutedRef = useRef(isMuted);
+  useEffect(() => {
+    isMutedRef.current = isMuted;
+  }, [isMuted]);
+
   // Keep latest callbacks in refs to prevent stale closure issues in WebSocket callbacks
   const callbacksRef = useRef({
     onStatusChange,
@@ -112,7 +118,7 @@ export const useGeminiLive = ({
   };
 
   const processAndSendMicAudio = (inputData: Float32Array, inputSampleRate: number) => {
-    if (isMuted) return;
+    if (isMutedRef.current) return;
     if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) return;
 
     const ratio = inputSampleRate / 16000;

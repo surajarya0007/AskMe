@@ -3,9 +3,10 @@ import React, { useEffect, useRef } from 'react';
 interface AudioWaveformProps {
   status: 'disconnected' | 'connecting' | 'connected' | 'listening' | 'speaking';
   isActive: boolean;
+  isMuted?: boolean;
 }
 
-export const AudioWaveform: React.FC<AudioWaveformProps> = ({ status, isActive }) => {
+export const AudioWaveform: React.FC<AudioWaveformProps> = ({ status, isActive, isMuted = false }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animationRef = useRef<number | null>(null);
   const phaseRef = useRef<number>(0);
@@ -36,7 +37,7 @@ export const AudioWaveform: React.FC<AudioWaveformProps> = ({ status, isActive }
 
       phaseRef.current += 0.05; // speed of moving wave
 
-      if (status === 'disconnected') {
+      if (status === 'disconnected' || (status === 'listening' && isMuted)) {
         // Draw a straight dim line
         ctx.beginPath();
         ctx.moveTo(0, height / 2);
