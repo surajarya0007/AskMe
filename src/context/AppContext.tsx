@@ -815,7 +815,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     } catch (err: any) {
       console.error('Error adding messages bulk:', err);
-      setError('Could not save conversation history.');
+      setError(`Could not save conversation history: ${err.message || err}`);
     }
   };
 

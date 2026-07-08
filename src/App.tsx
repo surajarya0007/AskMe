@@ -14,7 +14,6 @@ export const App: React.FC = () => {
     messages,
     addMessage,
     addMessagesBulk,
-    createNewSession,
     activeSessionId,
     settings,
     callState,
@@ -85,6 +84,14 @@ export const App: React.FC = () => {
 
     onTurnComplete: async (userText, aiText, isSessionSwitch) => {
       const finalUserText = userText || interimUserTextRef.current;
+      
+      // Clear live states synchronously to avoid split-second duplicate bubbles in UI
+      geminiUserTextRef.current = '';
+      interimUserTextRef.current = '';
+      setLiveUserText('');
+      setLiveAiText('');
+      resetInterimRef.current();
+
       try {
         const msgsToSave = [];
         if (finalUserText) msgsToSave.push({ sender: 'user' as const, text: finalUserText });
@@ -94,12 +101,6 @@ export const App: React.FC = () => {
         }
       } catch (e) {
         console.error('[App] Failed to save voice turn:', e);
-      } finally {
-        geminiUserTextRef.current = '';
-        interimUserTextRef.current = '';
-        resetInterimRef.current();
-        setLiveUserText('');
-        setLiveAiText('');
       }
     }
   });
@@ -130,26 +131,6 @@ export const App: React.FC = () => {
       setLiveAiText('');
     }
   }, [isLiveActive, setCallState]);
-
-  const isInitializingSessionRef = useRef(false);
-
-  // Lazily create session during voice call as soon as user starts speaking
-  useEffect(() => {
-    if (isLiveActive && !activeSessionId && liveUserText.trim() && !isInitializingSessionRef.current) {
-      isInitializingSessionRef.current = true;
-      createNewSession("New Conversation")
-        .catch(err => console.error("Failed to lazily create voice session:", err))
-        .finally(() => {
-          isInitializingSessionRef.current = false;
-        });
-    }
-  }, [isLiveActive, activeSessionId, liveUserText, createNewSession]);
-
-  useEffect(() => {
-    if (!isLiveActive) {
-      isInitializingSessionRef.current = false;
-    }
-  }, [isLiveActive]);
 
   // Disconnect active live session on switching session / starting new chat
   useEffect(() => {
