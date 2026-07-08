@@ -98,6 +98,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   
   // Initialize activeSessionId synchronously to prevent race conditions on page reload
   const [activeSessionId, setActiveSessionId] = useState<string | null>(() => {
+    const pathname = window.location.pathname;
+    if (pathname.startsWith('/session/')) {
+      const sessId = decodeURIComponent(pathname.substring(9));
+      if (sessId) return sessId;
+    }
     const savedUser = localStorage.getItem('askme_user');
     if (savedUser) {
       const parsed = JSON.parse(savedUser);
@@ -158,6 +163,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const logout = async () => {
     setUser(null);
     localStorage.removeItem('askme_user');
+    setActiveSessionId(null);
   };
 
   // Save settings to LocalStorage
@@ -177,6 +183,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [activeSessionId, user]);
 
+  // Sync activeSessionId to the URL pathname
+  useEffect(() => {
+    const pathname = window.location.pathname;
+    const urlSessionId = pathname.startsWith('/session/') ? decodeURIComponent(pathname.substring(9)) : null;
+
+    if (activeSessionId) {
+      if (urlSessionId !== activeSessionId) {
+        window.history.pushState(null, '', `/session/${encodeURIComponent(activeSessionId)}`);
+      }
+    } else {
+      if (pathname !== '/' && !pathname.startsWith('/auth/google/callback')) {
+        window.history.pushState(null, '', '/');
+      }
+    }
+  }, [activeSessionId]);
+
+  // Handle browser navigation history (back / forward buttons)
+  useEffect(() => {
+    const handlePopState = () => {
+      const pathname = window.location.pathname;
+      const urlSessionId = pathname.startsWith('/session/') ? decodeURIComponent(pathname.substring(9)) : null;
+      setActiveSessionId(urlSessionId);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
   // Sync / Load sessions on startup or when Database keys/user state change
   useEffect(() => {
     const loadSessions = async () => {
@@ -184,7 +217,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!user) {
         setSessions([]);
         setMessages([]);
-        setActiveSessionId(null);
+        // Only clear activeSessionId if there's no session in the URL.
+        // This ensures the activeSessionId is preserved during initial page load
+        // when the login modal is displayed, so it can be loaded after login.
+        const pathname = window.location.pathname;
+        const hasSessionInUrl = pathname.startsWith('/session/') && pathname.substring(9).length > 0;
+        if (!hasSessionInUrl) {
+          setActiveSessionId(null);
+        }
         setLoading(false);
         return;
       }
